@@ -16,6 +16,7 @@ from services.output import OutputService
 
 class Application():
     def __init__(self):
+        self.lastResultCode = ResultCode.SUCCESS
         self.config = None
         self.output = None
         self.argHelper = ArgHelper()
@@ -26,22 +27,23 @@ class Application():
     def Run(self):
         os.chdir(Path(__file__).parent.absolute())
         self.config = ConfigurationService()
-        if not self.RunStartupChecks() == ResultCode.SUCCESS:
-            self.Quit(1)
+        self.lastResultCode = self.RunStartupChecks()
+        if not self.lastResultCode == ResultCode.SUCCESS:
+            self.Quit(self.lastResultCode)
 
         self.GetAvailableBuildConfigs()
         self.argHelper.AppendToHelpMessage(self.GetDynamicHelpMessageContent())
-        resultCode, self.actions = self.argHelper.ParseArgs()
-        if not resultCode == ResultCode.SUCCESS:
-            self.Quit(resultCode)
+        self.lastResultCode, self.actions = self.argHelper.ParseArgs()
+        if not self.lastResultCode == ResultCode.SUCCESS:
+            self.Quit(self.lastResultCode)
         
         os.chdir(self.config.GetProjectRoot())
         self.output = OutputService(self.config.GetLogPath())
         self.output.SendInfoPrintOnly(f"Logging to file '{self.config.GetLogPath()}'")
         self.output.SendInfo(f"Project root directory detected as '{self.config.GetProjectRoot()}'")
 
-        self.ExecuteActions()
-        self.Quit()
+        self.lastResultCode = self.ExecuteActions()
+        self.Quit(self.lastResultCode)
 
     def Quit(self, code: int = ResultCode.SUCCESS):
         if self.output is None:
@@ -60,25 +62,25 @@ class Application():
         exit(exitCode)
 
     def RunStartupChecks(self):
-        lastResultCode = self.config.CheckConfigDir()
-        if not lastResultCode == ResultCode.SUCCESS:
+        self.lastResultCode = self.config.CheckConfigDir()
+        if not self.lastResultCode == ResultCode.SUCCESS:
             print(f"Could not find the configuration directory '{self.config.GetConfigDir()}'")
-            return lastResultCode
+            return self.lastResultCode
 
-        lastResultCode = self.config.LoadRootConfig()
-        if not lastResultCode == ResultCode.SUCCESS:
+        self.lastResultCode = self.config.LoadRootConfig()
+        if not self.lastResultCode == ResultCode.SUCCESS:
             print(f"Could not load the root configuration file {self.config.GetRootConfigFilename()}")
-            return lastResultCode
+            return self.lastResultCode
 
-        lastResultCode = self.config.LoadRootConfig()
-        if not self.config.CheckRootConfig() == ResultCode.SUCCESS:
+        self.lastResultCode = self.config.CheckRootConfig()
+        if not self.lastResultCode == ResultCode.SUCCESS:
             print("The root configuration is not valid")
-            return lastResultCode
+            return self.lastResultCode
 
-        lastResultCode = self.config.LoadRootConfig()
-        if not self.config.FindProjectRoot() == ResultCode.SUCCESS:
+        self.lastResultCode = self.config.FindProjectRoot()
+        if not self.lastResultCode == ResultCode.SUCCESS:
             print(f"Could not find {self.config.GetRootLocatorName()} in your project file tree")
-            return lastResultCode
+            return self.lastResultCode
 
         return ResultCode.SUCCESS
 
@@ -141,7 +143,7 @@ class Application():
             helpInfo  = "build given configuration",
             group     = 1,
             varName   = "build_name",
-            action    = self.ActionInitWorkspace
+            action    = self.ActionBuild
         )
 
         self.argHelper.AddArg(
@@ -163,13 +165,16 @@ class Application():
         )
 
     def ExecuteActions(self):
-        # TODO: respect result codes
         for action, param in self.actions:
             if param is None:
-                action()
+                self.lastResultCode = action()
             else:
-                action(param)
-        return ResultCode.SUCCESS
+                self.lastResultCode = action(param)
+
+            if not self.lastResultCode == ResultCode.SUCCESS:
+                break
+
+        return self.lastResultCode
 
     def ActionInitWorkspace(self):
         self.output.SendInfo("Workspace initialization requested")
@@ -183,10 +188,17 @@ class Application():
         self.output.SendInfo("Update requested")
         return ResultCode.ERR_NOT_IMPLEMENTED
         
-    def ActionBuild(self):
-        self.output.SendInfo("Build requested")
+    def ActionBuild(self, buildName: str):
+        self.output.SendInfo(f"Build requested for configuration '{buildName}'")
 
-        # TODO: Load build config
-        CompilerService(self.config, self.output).Compile()
+        self.lastResultCode = self.config.LoadBuildConfig(buildName)
+        if not self.lastResultCode == ResultCode.SUCCESS:
+            self.output.SendError(f"Could not load the build configuration file for '{buildName}'")
+            return self.lastResultCode
 
-        return ResultCode.ERR_NOT_IMPLEMENTED
+        self.lastResultCode = self.config.CheckBuildConfig()
+        if not self.lastResultCode == ResultCode.SUCCESS:
+            self.output.SendError(f"The build configuration for '{buildName}' is not valid")
+            return self.lastResultCode
+
+        return CompilerService(self.config, self.output).Compile()
