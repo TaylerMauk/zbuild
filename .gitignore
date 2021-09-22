@@ -1,0 +1,8 @@
+.vscode/
+.history/
+*.code-workspace
+
+**/__pycache__/
+
+config/
+zbuild.root
