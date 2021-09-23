@@ -69,12 +69,10 @@ class Application():
 
         self.lastResultCode = self.config.LoadRootConfig()
         if not self.lastResultCode == ResultCode.SUCCESS:
-            print(f"Could not load the root configuration file {self.config.GetRootConfigFilename()}")
-            return self.lastResultCode
-
-        self.lastResultCode = self.config.CheckRootConfig()
-        if not self.lastResultCode == ResultCode.SUCCESS:
-            print("The root configuration is not valid")
+            if self.lastResultCode == ResultCode.ERR_CONFIG_INVALID:
+                print("The root configuration is not valid")
+            else:
+                print(f"Could not find the root configuration file {self.config.GetRootConfigFilename()}")
             return self.lastResultCode
 
         self.lastResultCode = self.config.FindProjectRoot()
@@ -193,12 +191,10 @@ class Application():
 
         self.lastResultCode = self.config.LoadBuildConfig(buildName)
         if not self.lastResultCode == ResultCode.SUCCESS:
-            self.output.SendError(f"Could not load the build configuration file for '{buildName}'")
-            return self.lastResultCode
-
-        self.lastResultCode = self.config.CheckBuildConfig()
-        if not self.lastResultCode == ResultCode.SUCCESS:
-            self.output.SendError(f"The build configuration for '{buildName}' is not valid")
+            if self.lastResultCode == ResultCode.ERR_CONFIG_INVALID:
+                self.output.SendError(f"The build configuration for '{buildName}' is not valid")
+            else:
+                self.output.SendError(f"Could not find the build configuration file for '{buildName}'")
             return self.lastResultCode
 
         return CompilerService(self.config, self.output).Compile()

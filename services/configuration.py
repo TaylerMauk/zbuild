@@ -8,7 +8,7 @@ import json
 import os
 from pathlib import Path
 
-from constants import Configuration, KeyNames, ResultCode
+from constants import Configuration, KeyNames, ReservedValues, ResultCode
 
 class ConfigurationService:
     def __init__(self):
@@ -17,11 +17,16 @@ class ConfigurationService:
         self.rootData = None
 
         self.buildName = None
-        self.buildStepNumber = -1
-        self.buildStepNames = []
         self.buildData = None
+        self.buildSharedResources = None
 
-        self.runData = None
+        self.buildStepNames = []
+        self.buildStepNumber = -1
+        self.buildStepName = ""
+        self.buildStepData = None
+
+# Root Configuration
+################################################################################
 
     def GetConfigDir(self):
         return self.configRoot / Configuration.Files.DIR_NAME
@@ -56,27 +61,9 @@ class ConfigurationService:
     
     def GetLogPath(self):
         return self.GetLogOutputDir() / f"{Configuration.App.NAME}.log"
-    
-    def GetArgsdPath(self):
-        return self.GetConfigDir() / Configuration.App.Argsd.NAME
         
     def GetToolchain(self):
         return str(self.rootData[KeyNames.Root.Toolchain.ROOT])
-        
-    def GetBuildName(self):
-        return str(self.buildName)
-
-    def GetBuildFileExt(self):
-        return Configuration.Build.Files.EXTENSION
-
-    def GetNextBuildStep(self):
-        if self.buildStepNumber == len(self.buildStepNames):
-            return None
-
-        buildStepName = self.buildStepNames[self.buildStepNumber]
-        buildStepData = self.buildData[KeyNames.Build.Steps.ROOT][buildStepName]
-        self.buildStepNumber += 1
-        return buildStepData
 
     def CheckConfigDir(self):
         with self.GetConfigDir() as configDirPath:
@@ -90,7 +77,9 @@ class ConfigurationService:
         if rootConfigPath.exists():
             with open(rootConfigPath, "r") as f:
                 self.rootData = json.load(f)
-            
+
+            if not self.CheckRootConfig() == ResultCode.SUCCESS:
+                return ResultCode.ERR_CONFIG_INVALID
             return ResultCode.SUCCESS
         
         return ResultCode.ERR_FILE_NOT_FOUND
@@ -98,7 +87,6 @@ class ConfigurationService:
     def CheckRootConfig(self):
         if not self.rootData.keys() & { KeyNames.Root.OutputDirectories.ROOT, KeyNames.Root.Platform.ROOT, KeyNames.Root.Toolchain.ROOT }:
             return ResultCode.ERR_CONFIG_INVALID
-        
         return ResultCode.SUCCESS
 
     def FindProjectRoot(self):
@@ -118,33 +106,78 @@ class ConfigurationService:
             return ResultCode.SUCCESS
         return ResultCode.ERR_FILE_NOT_FOUND
 
+# Build Configuration
+################################################################################
+        
+    def GetBuildName(self):
+        return str(self.buildName)
+
+    def GetBuildFileExt(self):
+        return Configuration.Build.Files.EXTENSION
+
     def LoadBuildConfig(self, buildName: str):
         buildFilePath = self.GetConfigDir() / f"{buildName}.{Configuration.Build.Files.EXTENSION}"
         if buildFilePath.exists():
             with open(buildFilePath, "r") as f:
                 self.buildData = json.load(f)
 
+            if not self.CheckBuildConfig() == ResultCode.SUCCESS:
+                return ResultCode.ERR_CONFIG_INVALID
+
             self.buildName = buildName
             self.buildStepNumber = 0
             self.buildStepNames = list(self.buildData[KeyNames.Build.Steps.ROOT].keys())
+            self.buildSharedResources = self.buildData[KeyNames.Build.SharedRecources.ROOT]
             return ResultCode.SUCCESS
         
         return ResultCode.ERR_FILE_NOT_FOUND
 
     def CheckBuildConfig(self):
-        return ResultCode.ERR_NOT_IMPLEMENTED
+        if not self.buildData.keys() & { KeyNames.Build.SharedRecources.ROOT, KeyNames.Build.Steps.ROOT }:
+            return ResultCode.ERR_CONFIG_INVALID
+        return ResultCode.SUCCESS
 
-    def ReadBuildKey(self, keyName: str):
-        if not keyName in self.buildData:
-            return None
-        return self.buildData[keyName]
+# Build Step Configuration
+################################################################################
 
-    def ReadRootKey(self, keyName: str):
-        if not keyName in self.rootData:
-            return None
-        return self.rootData[keyName]
+    def LoadNextBuildStep(self):
+        if self.buildStepNumber == len(self.buildStepNames):
+            return ResultCode.WRN_NO_VALUE
 
-    def ReadRunKey(self, keyName: str):
-        if not keyName in self.data:
-            return None
-        return self.runData[keyName]
+        self.buildStepName = self.buildStepNames[self.buildStepNumber]
+        self.buildStepData = self.buildData[KeyNames.Build.Steps.ROOT][self.buildStepName]
+        self.buildStepNumber += 1
+        return ResultCode.SUCCESS
+
+    def GetBuildStepIncludeDirectories(self):
+        return self.__GetBuildStepValue(KeyNames.Build.Steps.Detail.INCLUDE_DIRECTORIES)
+
+    def GetBuildStepSourceDirectories(self):
+        return self.__GetBuildStepValue(KeyNames.Build.Steps.Detail.SOURCE_DIRECTORIES)
+
+    def GetBuildStepSourceExtension(self):
+        return self.__GetBuildStepValue(KeyNames.Build.Steps.Detail.SOURCE_FILE_EXTENSTION)
+
+    def GetBuildStepHeaderExtension(self):
+        return self.__GetBuildStepValue(KeyNames.Build.Steps.Detail.HEADER_FILE_EXTENSTION)
+
+    def GetBuildStepExecutableName(self):
+        return self.__GetBuildStepValue(KeyNames.Build.Steps.Detail.EXECUTABLE_NAME)
+
+    def __GetBuildStepValue(self, keyName: str):
+        if not keyName in self.buildStepData:
+            return (ResultCode.WRN_NO_VALUE, None)
+
+        includeDirs = self.buildStepData[keyName]
+
+        if not includeDirs == ReservedValues.Configuration.Build.SharedResource.LOOKUP:
+            return (ResultCode.SUCCESS, includeDirs)
+
+        if keyName in self.buildSharedResources:
+            sharedResource = self.buildSharedResources[keyName]
+            sharedResourceAppliesTo = sharedResource[KeyNames.Build.SharedRecources.APPLIES_TO]
+
+            if sharedResourceAppliesTo == ReservedValues.Configuration.Build.SharedResource.APPLIES_TO_ALL or self.buildStepName in sharedResourceAppliesTo:
+                return sharedResource[KeyNames.Build.SharedRecources.VALUE]
+            else:
+                return (ResultCode.WRN_NO_VALUE, None)

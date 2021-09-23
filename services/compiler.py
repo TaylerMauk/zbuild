@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import subprocess
 
+from constants import ResultCode
 from services.configuration import ConfigurationService
 from services.output import OutputService
 
@@ -17,26 +18,59 @@ class CompilerService:
         self.config = config
         self.errorIndicator = None
         self.warningIndicator = None
+        self.lastResultCode = ResultCode.SUCCESS
+
+    def Compile(self):
+        resultCode = ResultCode.SUCCESS
+        toolchain = self.config.GetToolchain()
+
+        dir = self.config.GetExecutableOutputDir() / self.config.GetBuildName()
+        if dir.exists():
+            self.__ClearDirTree(dir)
+        else:
+            os.makedirs(dir)
+
+        # TODO: Add logic to handle multiple build steps
+        self.config.LoadNextBuildStep()
+
+        if toolchain == "clang":
+            self.errorIndicator = None
+            self.warningIndicator = None
+            resultCode = self.__CompileWithClang()
+        elif toolchain == "gcc":
+            self.errorIndicator = None
+            self.warningIndicator = None
+            resultCode = self.__CompileWithGCC()
+        elif toolchain == "msvc":
+            self.errorIndicator = "error"
+            self.warningIndicator = "warning"
+            resultCode = self.__CompileWithMSVC()
+
+        return resultCode
 
     def __CompileWithClang(self):
         self.output.SendInfo("Active toolchain is clang")
         compileCommand = ["clang"]
-        return False
+        return ResultCode.ERR_NOT_IMPLEMENTED
 
     def __CompileWithGCC(self):
         self.output.SendInfo("Active toolchain is gcc")
         compileCommand = ["gcc"]
-        return False
+        return ResultCode.ERR_NOT_IMPLEMENTED
 
     def __CompileWithMSVC(self):
         self.output.SendInfo("Active toolchain is msvc")
         compileCommand = ["cl", "/nologo"]
         buildName = self.config.GetBuildName()
 
+        self.lastResultCode, executableName = self.config.GetBuildStepExecutableName()
+        if not self.lastResultCode == ResultCode.SUCCESS:
+            return ResultCode.ERR_GENERIC
+
         # Append output directory paths
         # pathlib strips trailing slash, but is needed for cl. Adding it back with os.path.join().
         executablePath = self.config.GetExecutableOutputDir() / buildName
-        executablePath = os.path.join(executablePath, self.config.ReadBuildKey("executableName"))
+        executablePath = os.path.join(executablePath, executableName)
 
         objDir = self.config.GetObjectOutputDir() / buildName
         objDir = os.path.join(objDir, '')
@@ -47,12 +81,17 @@ class CompilerService:
         compileCommand.append(f"/Fe:{executablePath}")
         compileCommand.append(f"/Fo:{objDir}")
         compileCommand.append(f"/Fd:{debugSymbolsDir}")
+        
+    ##### DEBUG
+        print(compileCommand)
+        return ResultCode.SUCCESS
+    ###~ DEBUG
 
         # Append include directories
-        for dir in self.config.ReadBuildKey("includeDirectories"):
+        for dir in self.config.GetBuildStepIncludeDirectories():
             with Path(dir) as includePath:
                 if not includePath.exists():
-                    self.output.SendWarning(f"Could not find include path {includePath}")
+                    self.output.SendWarning(f"Could not find include path '{includePath}'")
                     continue
 
                 compileCommand.append("/I")
@@ -65,7 +104,7 @@ class CompilerService:
         # Enumerate modification times of object files
         with self.config.GetObjectOutputDir() as objFileRootPath:
             if not objFileRootPath.exists():
-                self.output.SendError(f"Could not find include path {objFileRootPath}")
+                self.output.SendError(f"Could not find object output path '{objFileRootPath}'")
                 return
 
             for objFile in os.listdir(objFileRootPath.resolve()):
@@ -79,8 +118,8 @@ class CompilerService:
         # Append source file to compile command if modified time is more recent than object modified time
         # FIXME: Look out, currently no files can have the same name! (Even in different dir)
         # TODO: Use glob wildcard if all source files in directory are being compiled?
-        sourceExtension = self.config.ReadBuildKey("sourceExtension")
-        for dir in self.config.ReadBuildKey("sourceDirectories"):
+        sourceExtension = self.config.GetBuildStepSourceExtension()
+        for dir in self.config.GetBuildStepSourceDirectories():
             with Path(dir) as sourcePath:
                 if not sourcePath.exists():
                     self.output.SendWarning(f"Could not find source path {sourcePath}")
@@ -105,43 +144,8 @@ class CompilerService:
 
         # for f in objFilesToRemove:
         #     os.remove(f)
-        
-    ##### DEBUG
-        print(compileCommand)
-        print(f"OBJ to remove: {objFilesToRemove}")
-        print(f"OBJ file paths: {objFilePaths}")
-        compileCommand = ['cl', '/nologo', 'aaa']
-    ####~ DEBUG
 
-        self.__Execute(compileCommand)
-        return
-
-    def Compile(self):
-        result = False
-        toolchain = self.config.GetToolchain()
-
-        dir = self.config.GetExecutableOutputDir() / self.config.GetBuildName()
-        if dir.exists():
-            self.__ClearDirTree(dir)
-        else:
-            os.makedirs(dir)
-
-        # TODO: Add logic to handle multiple build steps
-
-        if toolchain == "clang":
-            self.errorIndicator = None
-            self.warningIndicator = None
-            result = self.CompileWithClang()
-        elif toolchain == "gcc":
-            self.errorIndicator = None
-            self.warningIndicator = None
-            result = self.CompileWithGCC()
-        elif toolchain == "msvc":
-            self.errorIndicator = "error"
-            self.warningIndicator = "warning"
-            result = self.CompileWithMSVC()
-
-        return result
+        return self.__Execute(compileCommand)
 
     def __Execute(self, cmd: str):
         p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
@@ -154,6 +158,15 @@ class CompilerService:
                     self.output.SendWarning(line)
                 else:
                     self.output.SendInfo(line)
+
+        p.communicate()
+        msg = f"Compilation process exited with code {p.returncode}"
+        if not p.returncode == 0:
+            self.output.SendWarning(msg)
+            return ResultCode.WRN_PROC_NONZERO_EXIT
+        else:
+            self.output.SendInfo(msg)
+            return ResultCode.SUCCESS
 
     def __ClearDirTree(self, root: str):
         for p in Path(root).iterdir():

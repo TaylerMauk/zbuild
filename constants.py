@@ -9,9 +9,6 @@ class Configuration():
         NAME    = "zbuild"
         VERSION = "2021.a"
 
-        class Argsd():
-            NAME = None
-
         class RootLocator():
             NAME = None
 
@@ -30,7 +27,6 @@ class Configuration():
         class Files():
             EXTENSION = None
 
-Configuration.App.Argsd.NAME        = f"argsd.{Configuration.Files.EXTENSION}"
 Configuration.App.RootLocator.NAME  = f"{Configuration.App.NAME}.root"
 Configuration.Root.FILE_NAME        = f"root.{Configuration.Files.EXTENSION}"
 Configuration.Build.Files.EXTENSION = f"b.{Configuration.Files.EXTENSION}"
@@ -46,6 +42,14 @@ class KeyNames():
 
         class Steps():
             ROOT = "steps"
+
+            class Detail():
+                EXECUTABLE_NAME        = "executableName"
+                EXECUTABLE_TYPE        = "executableType"
+                SOURCE_FILE_EXTENSTION = "sourceExtension"
+                HEADER_FILE_EXTENSTION = "headerExtension"
+                INCLUDE_DIRECTORIES    = "includeDirectories"
+                SOURCE_DIRECTORIES     = "sourceDirectories"
 
     class Root():
         class OutputDirectories():
@@ -63,7 +67,11 @@ class KeyNames():
 
 # Reserved values that invoke a behavior instead of store a value
 class ReservedValues():
-    SHARED_RESOURCE_LOOKUP = "zbuild_lookup"
+    class Configuration():
+        class Build():
+            class SharedResource():
+                LOOKUP         = "zbuild_lookup"
+                APPLIES_TO_ALL = "zbuild_all"
 
 # Result codes returned from operations
 class ResultCode():
@@ -76,3 +84,6 @@ class ResultCode():
     ERR_FILE_NOT_FOUND  = 0x0104
     ERR_KEY_NOT_FOUND   = 0x0105
     ERR_CONFIG_INVALID  = 0x0106
+
+    WRN_NO_VALUE          = 0x0200
+    WRN_PROC_NONZERO_EXIT = 0x0201
