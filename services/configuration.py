@@ -168,16 +168,16 @@ class ConfigurationService:
         if not keyName in self.buildStepData:
             return (ResultCode.WRN_NO_VALUE, None)
 
-        includeDirs = self.buildStepData[keyName]
+        dataValue = self.buildStepData[keyName]
 
-        if not includeDirs == ReservedValues.Configuration.Build.SharedResource.LOOKUP:
-            return (ResultCode.SUCCESS, includeDirs)
+        if not dataValue == ReservedValues.Configuration.Build.SharedResource.LOOKUP:
+            return (ResultCode.SUCCESS, dataValue)
 
         if keyName in self.buildSharedResources:
             sharedResource = self.buildSharedResources[keyName]
             sharedResourceAppliesTo = sharedResource[KeyNames.Build.SharedRecources.APPLIES_TO]
 
             if sharedResourceAppliesTo == ReservedValues.Configuration.Build.SharedResource.APPLIES_TO_ALL or self.buildStepName in sharedResourceAppliesTo:
-                return sharedResource[KeyNames.Build.SharedRecources.VALUE]
+                return (ResultCode.SUCCESS, sharedResource[KeyNames.Build.SharedRecources.VALUE])
             else:
                 return (ResultCode.WRN_NO_VALUE, None)
