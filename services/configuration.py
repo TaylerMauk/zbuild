@@ -39,6 +39,9 @@ class ConfigurationService:
 
     def GetProjectRoot(self):
         return self.projectRoot
+        
+    def GetTargetPlatform(self):
+        return self.rootData[KeyNames.Root.Platform.ROOT]
 
     def GetTargetOutputDir(self):
         return Path(self.projectRoot / self.rootData[KeyNames.Root.OutputDirectories.ROOT][KeyNames.Root.OutputDirectories.TARGET])
@@ -149,6 +152,9 @@ class ConfigurationService:
         self.buildStepNumber += 1
         return ResultCode.SUCCESS
 
+    def GetBuildStepDefines(self):
+        return self.__GetBuildStepValue(KeyNames.Build.Steps.Detail.DEFINES)
+
     def GetBuildStepIncludeDirectories(self):
         return self.__GetBuildStepValue(KeyNames.Build.Steps.Detail.INCLUDE_DIRECTORIES)
 
@@ -167,8 +173,11 @@ class ConfigurationService:
     def GetBuildStepTargetType(self):
         return self.__GetBuildStepValue(KeyNames.Build.Steps.Detail.TARGET_TYPE)
 
-    def GetBuildStepSharedLibraries(self):
-        return ResultCode.ERR_NOT_IMPLEMENTED
+    def GetBuildStepDynamicSharedLibraries(self):
+        return self.__GetBuildStepSharedLibraries(KeyNames.Build.Steps.Detail.SharedLibraries.DYNAMIC)
+
+    def GetBuildStepStaticSharedLibraries(self):
+        return self.__GetBuildStepSharedLibraries(KeyNames.Build.Steps.Detail.SharedLibraries.STATIC)
 
     def __GetBuildStepValue(self, keyName: str):
         if not keyName in self.buildStepData and not keyName in self.buildSharedResources:
@@ -187,3 +196,27 @@ class ConfigurationService:
                 return (ResultCode.SUCCESS, sharedResource[KeyNames.Build.SharedRecources.VALUE])
             else:
                 return (ResultCode.WRN_NO_VALUE, None)
+
+    def __GetBuildStepSharedLibraries(self, libType: str):
+        resultCode, libData = self.__GetBuildStepValue(KeyNames.Build.Steps.Detail.SharedLibraries.ROOT)
+        if not resultCode == ResultCode.SUCCESS:
+            return (resultCode, None)
+
+        sharedLibs = []
+
+        if ReservedValues.Configuration.Build.Target.Platform.ALL in libData:
+            allPlatformLibs = libData[ReservedValues.Configuration.Build.Target.Platform.ALL]
+
+            if libType in allPlatformLibs:
+                for lib in allPlatformLibs[libType]:
+                    sharedLibs.append(lib)
+
+        targetPlatform = self.GetTargetPlatform()
+        if targetPlatform in libData:
+            targetPlatformLibs = libData[targetPlatform]
+            
+            if libType in targetPlatformLibs:
+                for lib in targetPlatformLibs[libType]:
+                    sharedLibs.append(lib)
+
+        return (ResultCode.SUCCESS, sharedLibs)

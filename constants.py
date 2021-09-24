@@ -50,6 +50,12 @@ class KeyNames():
                 HEADER_FILE_EXTENSTION = "headerExtension"
                 INCLUDE_DIRECTORIES    = "includeDirectories"
                 SOURCE_DIRECTORIES     = "sourceDirectories"
+                DEFINES                = "defines"
+
+                class SharedLibraries():
+                    ROOT    = "sharedLibraries"
+                    DYNAMIC = "dynamic"
+                    STATIC  = "static"
 
     class Root():
         class OutputDirectories():
@@ -73,10 +79,15 @@ class ReservedValues():
                 APPLIES_TO_ALL = "zbuild_all"
             
             class Target():
+                class Platform():
+                    ALL     = "all"
+                    LINUX   = "linux"
+                    OSX     = "osx"
+                    WINDOWS = "windows"
+
                 class Type():
-                    LIBRARY_SHARED = "shared_library"
-                    LIBRARY_STATIC = "static_library"
-                    STANDALONE     = "standalone"
+                    LIBRARY    = "library"
+                    STANDALONE = "standalone"
 
 # Result codes returned from operations
 class ResultCode():

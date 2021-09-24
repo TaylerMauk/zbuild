@@ -63,15 +63,25 @@ class CompilerService:
         compileCommand = ["cl", "/nologo"]
         buildName = self.config.GetBuildName()
 
+        # Append defines
+        self.lastResultCode, defines = self.config.GetBuildStepDefines()
+        if not self.lastResultCode == ResultCode.SUCCESS:
+            return ResultCode.ERR_GENERIC
+
+        for name, value in defines.items():
+            defineArg = name
+            if value is not None:
+                defineArg += f"={value}"
+            
+            compileCommand.append(f"/D\"{defineArg}\"")
+
         # Append target type
         self.lastResultCode, targetType = self.config.GetBuildStepTargetType()
         if not self.lastResultCode == ResultCode.SUCCESS:
             return ResultCode.ERR_GENERIC
 
-        if targetType == ReservedValues.Configuration.Build.Target.Type.LIBRARY_SHARED:
+        if targetType == ReservedValues.Configuration.Build.Target.Type.LIBRARY:
             compileCommand.append("/LD")
-        elif targetType == ReservedValues.Configuration.Build.Target.Type.LIBRARY_STATIC:
-            pass # TODO
 
         self.lastResultCode, targetName = self.config.GetBuildStepTargetName()
         if not self.lastResultCode == ResultCode.SUCCESS:
@@ -85,7 +95,7 @@ class CompilerService:
         objDir = self.config.GetObjectOutputDir() / buildName
         objDir = os.path.join(objDir, '')
 
-        debugSymbolsDir = self.config.GetObjectOutputDir() / buildName
+        debugSymbolsDir = self.config.GetDebugSymbolsOutputDir() / buildName
         debugSymbolsDir = os.path.join(debugSymbolsDir, '')
 
         compileCommand.append(f"/Fe:{targetPath}")
@@ -106,13 +116,21 @@ class CompilerService:
                 compileCommand.append("/I")
                 compileCommand.append(str(includePath))
 
-        # Append linked libraries
-        self.lastResultCode, sharedLibraries = self.config.GetBuildStepSharedLibraries()
+        # Append shared libraries
+        self.lastResultCode, dynamicLibraries = self.config.GetBuildStepDynamicSharedLibraries()
         if not self.lastResultCode == ResultCode.SUCCESS:
             return ResultCode.ERR_GENERIC
 
-        for lib in sharedLibraries:
-            compileCommand.append(f"/MT")
+        for lib in dynamicLibraries:
+            compileCommand.append("/MD")
+            compileCommand.append(lib)
+
+        self.lastResultCode, staticLibraries = self.config.GetBuildStepStaticSharedLibraries()
+        if not self.lastResultCode == ResultCode.SUCCESS:
+            return ResultCode.ERR_GENERIC
+
+        for lib in staticLibraries:
+            compileCommand.append("/MT")
             compileCommand.append(lib)
 
         objModifiedTimes = {}
