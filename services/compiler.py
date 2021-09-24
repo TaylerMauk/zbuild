@@ -8,7 +8,7 @@ import os
 from pathlib import Path
 import subprocess
 
-from constants import ResultCode
+from constants import ReservedValues, ResultCode
 from services.configuration import ConfigurationService
 from services.output import OutputService
 
@@ -24,7 +24,7 @@ class CompilerService:
         resultCode = ResultCode.SUCCESS
         toolchain = self.config.GetToolchain()
 
-        dir = self.config.GetExecutableOutputDir() / self.config.GetBuildName()
+        dir = self.config.GetTargetOutputDir() / self.config.GetBuildName()
         if dir.exists():
             self.__ClearDirTree(dir)
         else:
@@ -63,14 +63,24 @@ class CompilerService:
         compileCommand = ["cl", "/nologo"]
         buildName = self.config.GetBuildName()
 
-        self.lastResultCode, executableName = self.config.GetBuildStepExecutableName()
+        # Append target type
+        self.lastResultCode, targetType = self.config.GetBuildStepTargetType()
         if not self.lastResultCode == ResultCode.SUCCESS:
             return ResultCode.ERR_GENERIC
 
-        # Append output directory paths
+        if targetType == ReservedValues.Configuration.Build.Target.Type.LIBRARY_SHARED:
+            compileCommand.append("/LD")
+        elif targetType == ReservedValues.Configuration.Build.Target.Type.LIBRARY_STATIC:
+            pass # TODO
+
+        self.lastResultCode, targetName = self.config.GetBuildStepTargetName()
+        if not self.lastResultCode == ResultCode.SUCCESS:
+            return ResultCode.ERR_GENERIC
+
+        # Append output paths
         # pathlib strips trailing slash, but is needed for cl. Adding it back with os.path.join().
-        executablePath = self.config.GetExecutableOutputDir() / buildName
-        executablePath = os.path.join(executablePath, executableName)
+        targetPath = self.config.GetTargetOutputDir() / buildName
+        targetPath = os.path.join(targetPath, targetName)
 
         objDir = self.config.GetObjectOutputDir() / buildName
         objDir = os.path.join(objDir, '')
@@ -78,24 +88,32 @@ class CompilerService:
         debugSymbolsDir = self.config.GetObjectOutputDir() / buildName
         debugSymbolsDir = os.path.join(debugSymbolsDir, '')
 
-        compileCommand.append(f"/Fe:{executablePath}")
+        compileCommand.append(f"/Fe:{targetPath}")
         compileCommand.append(f"/Fo:{objDir}")
         compileCommand.append(f"/Fd:{debugSymbolsDir}")
-        
-    ##### DEBUG
-        print(compileCommand)
-        return ResultCode.SUCCESS
-    ###~ DEBUG
 
         # Append include directories
-        for dir in self.config.GetBuildStepIncludeDirectories():
+        self.lastResultCode, includeDirectories = self.config.GetBuildStepIncludeDirectories()
+        if not self.lastResultCode == ResultCode.SUCCESS:
+            return ResultCode.ERR_GENERIC
+
+        for dir in includeDirectories:
             with Path(dir) as includePath:
                 if not includePath.exists():
-                    self.output.SendWarning(f"Could not find include path '{includePath}'")
+                    self.output.SendWarning(f"Skipping include directory '{includePath}' because it could not be found")
                     continue
 
                 compileCommand.append("/I")
                 compileCommand.append(str(includePath))
+
+        # Append linked libraries
+        self.lastResultCode, sharedLibraries = self.config.GetBuildStepSharedLibraries()
+        if not self.lastResultCode == ResultCode.SUCCESS:
+            return ResultCode.ERR_GENERIC
+
+        for lib in sharedLibraries:
+            compileCommand.append(f"/MT")
+            compileCommand.append(lib)
 
         objModifiedTimes = {}
         objFilePaths = {}
@@ -104,25 +122,33 @@ class CompilerService:
         # Enumerate modification times of object files
         with self.config.GetObjectOutputDir() as objFileRootPath:
             if not objFileRootPath.exists():
-                self.output.SendError(f"Could not find object output path '{objFileRootPath}'")
-                return
+                self.output.SendWarning(f"Skipping object directory '{objFileRootPath}' because it could not be found")
+            else:
+                for objFile in os.listdir(objFileRootPath.resolve()):
+                    if not objFile.endswith("obj"):
+                        continue
 
-            for objFile in os.listdir(objFileRootPath.resolve()):
-                if not objFile.endswith("obj"):
-                    continue
+                    with Path(objFileRootPath / objFile) as objFilePath:
+                        objFileName = objFilePath.parts[-1]
+                        objModifiedTimes[objFileName] = objFilePath.lstat().st_mtime
+                        objFilePaths[objFileName] = objFilePath.resolve()
 
-                with Path(objFileRootPath / objFile) as objFilePath:
-                    objModifiedTimes[objFilePath.stem] = objFilePath.lstat().st_mtime
-                    objFilePaths[objFilePath.stem] = objFilePath.resolve()
+        self.lastResultCode, sourceExtension = self.config.GetBuildStepSourceExtension()
+        if not self.lastResultCode == ResultCode.SUCCESS:
+            return ResultCode.ERR_GENERIC
 
-        # Append source file to compile command if modified time is more recent than object modified time
+        self.lastResultCode, sourceDirectories = self.config.GetBuildStepSourceDirectories()
+        if not self.lastResultCode == ResultCode.SUCCESS:
+            return ResultCode.ERR_GENERIC
+
         # FIXME: Look out, currently no files can have the same name! (Even in different dir)
         # TODO: Use glob wildcard if all source files in directory are being compiled?
-        sourceExtension = self.config.GetBuildStepSourceExtension()
-        for dir in self.config.GetBuildStepSourceDirectories():
+
+        # Append source file to compile command if modified time is more recent than object modified time
+        for dir in sourceDirectories:
             with Path(dir) as sourcePath:
                 if not sourcePath.exists():
-                    self.output.SendWarning(f"Could not find source path {sourcePath}")
+                    self.output.SendWarning(f"Skipping source directory '{sourcePath}' because it could not be found")
                     continue
 
                 for sourceFile in os.listdir(sourcePath.resolve()):
@@ -131,19 +157,25 @@ class CompilerService:
 
                     filePath = None
                     with Path(sourcePath / sourceFile) as sourceFilePath:
-                        if sourceFilePath.stem in objModifiedTimes:
-                            if objModifiedTimes[sourceFilePath.stem] > sourceFilePath.lstat().st_mtime:
-                                filePath = objFilePaths[sourceFilePath.stem]
+                        fileName = sourceFilePath.parts[-1]
+                        if fileName in objModifiedTimes:
+                            if objModifiedTimes[fileName] > sourceFilePath.lstat().st_mtime:
+                                filePath = objFilePaths[fileName]
                             else:
-                                objFilesToRemove.append(objFilePaths[sourceFilePath.stem])
-                                filePath = str(sourcePath / sourceFile)
+                                objFilesToRemove.append(objFilePaths[fileName])
+                                filePath = str(sourceFilePath)
                         else:
-                            filePath = str(sourcePath / sourceFile)
-                        
+                            filePath = str(sourceFilePath)
+
                     compileCommand.append(filePath)
 
-        # for f in objFilesToRemove:
-        #     os.remove(f)
+        for f in objFilesToRemove:
+            os.remove(f)
+
+    ##### DEBUG
+        print(compileCommand)
+        return ResultCode.SUCCESS
+    ###~ DEBUG
 
         return self.__Execute(compileCommand)
 

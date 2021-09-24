@@ -44,8 +44,8 @@ class KeyNames():
             ROOT = "steps"
 
             class Detail():
-                EXECUTABLE_NAME        = "executableName"
-                EXECUTABLE_TYPE        = "executableType"
+                TARGET_NAME            = "targetName"
+                TARGET_TYPE            = "targetType"
                 SOURCE_FILE_EXTENSTION = "sourceExtension"
                 HEADER_FILE_EXTENSTION = "headerExtension"
                 INCLUDE_DIRECTORIES    = "includeDirectories"
@@ -55,7 +55,7 @@ class KeyNames():
         class OutputDirectories():
             ROOT          = "outputDirectories"
             DEBUG_SYMBOLS = "debugSymbols"
-            EXECUTABLE    = "executable"
+            TARGET        = "target"
             LOG           = "log"
             OBJECT        = "object"
 
@@ -65,13 +65,18 @@ class KeyNames():
         class Toolchain():
             ROOT = "toolchain"
 
-# Reserved values that invoke a behavior instead of store a value
 class ReservedValues():
     class Configuration():
         class Build():
             class SharedResource():
                 LOOKUP         = "zbuild_lookup"
                 APPLIES_TO_ALL = "zbuild_all"
+            
+            class Target():
+                class Type():
+                    LIBRARY_SHARED = "shared_library"
+                    LIBRARY_STATIC = "static_library"
+                    STANDALONE     = "standalone"
 
 # Result codes returned from operations
 class ResultCode():

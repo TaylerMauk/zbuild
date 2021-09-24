@@ -40,8 +40,8 @@ class ConfigurationService:
     def GetProjectRoot(self):
         return self.projectRoot
 
-    def GetExecutableOutputDir(self):
-        return Path(self.projectRoot / self.rootData[KeyNames.Root.OutputDirectories.ROOT][KeyNames.Root.OutputDirectories.EXECUTABLE])
+    def GetTargetOutputDir(self):
+        return Path(self.projectRoot / self.rootData[KeyNames.Root.OutputDirectories.ROOT][KeyNames.Root.OutputDirectories.TARGET])
 
     def GetObjectOutputDir(self):
         return Path(self.projectRoot / self.rootData[KeyNames.Root.OutputDirectories.ROOT][KeyNames.Root.OutputDirectories.OBJECT])
@@ -54,7 +54,7 @@ class ConfigurationService:
 
     def GetCompilerOutputDirs(self):
         return [
-            self.GetExecutableOutputDir(),
+            self.GetTargetOutputDir(),
             self.GetDebugSymbolsOutputDir(),
             self.GetObjectOutputDir()
         ]
@@ -161,11 +161,17 @@ class ConfigurationService:
     def GetBuildStepHeaderExtension(self):
         return self.__GetBuildStepValue(KeyNames.Build.Steps.Detail.HEADER_FILE_EXTENSTION)
 
-    def GetBuildStepExecutableName(self):
-        return self.__GetBuildStepValue(KeyNames.Build.Steps.Detail.EXECUTABLE_NAME)
+    def GetBuildStepTargetName(self):
+        return self.__GetBuildStepValue(KeyNames.Build.Steps.Detail.TARGET_NAME)
+
+    def GetBuildStepTargetType(self):
+        return self.__GetBuildStepValue(KeyNames.Build.Steps.Detail.TARGET_TYPE)
+
+    def GetBuildStepSharedLibraries(self):
+        return ResultCode.ERR_NOT_IMPLEMENTED
 
     def __GetBuildStepValue(self, keyName: str):
-        if not keyName in self.buildStepData:
+        if not keyName in self.buildStepData and not keyName in self.buildSharedResources:
             return (ResultCode.WRN_NO_VALUE, None)
 
         dataValue = self.buildStepData[keyName]
