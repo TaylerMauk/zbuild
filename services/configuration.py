@@ -68,10 +68,10 @@ class ConfigurationService:
             return Path(relativePath)
         return Path(self.projectRoot / relativePath)
 
-    def GetLogOutputDir(self, useRelative = False):
+    def GetLogOutputDir(self,  pathType: PathType):
         relativePath = self.rootData[KeyNames.Root.OutputDirectories.ROOT][KeyNames.Root.OutputDirectories.LOG]
 
-        if useRelative:
+        if pathType == PathType.RELATIVE:
             return Path(relativePath)
         return Path(self.projectRoot / relativePath)
 
