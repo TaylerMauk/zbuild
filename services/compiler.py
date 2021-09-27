@@ -9,13 +9,14 @@ from pathlib import Path
 import subprocess
 
 from constants import ReservedValues, ResultCode
-from services.configuration import ConfigurationService
+from services.configuration import ConfigurationService, PathType
 from services.output import OutputService
 
 class CompilerService:
     def __init__(self, config: ConfigurationService, output: OutputService):
         self.output = output
         self.config = config
+        self.buildName = self.config.GetBuildName()
         self.errorIndicator = None
         self.warningIndicator = None
         self.lastResultCode = ResultCode.SUCCESS
@@ -24,11 +25,14 @@ class CompilerService:
         resultCode = ResultCode.SUCCESS
         toolchain = self.config.GetToolchain()
 
-        dir = self.config.GetTargetOutputDir() / self.config.GetBuildName()
+        dir = self.config.GetTargetOutputDir(PathType.ABSOLUTE) / self.buildName
         if dir.exists():
             self.__ClearDirTree(dir)
         else:
             os.makedirs(dir)
+
+        os.makedirs(self.config.GetObjectOutputDir(PathType.ABSOLUTE) / self.buildName, exist_ok = True)
+        os.makedirs(self.config.GetDebugSymbolsOutputDir(PathType.ABSOLUTE) / self.buildName, exist_ok = True)
 
         # TODO: Add logic to handle multiple build steps
         self.config.LoadNextBuildStep()
@@ -61,7 +65,6 @@ class CompilerService:
     def __CompileWithMSVC(self):
         self.output.SendInfo("Active toolchain is msvc")
         compileCommand = ["cl", "/nologo"]
-        buildName = self.config.GetBuildName()
 
         # Append defines
         self.lastResultCode, defines = self.config.GetBuildStepDefines()
@@ -71,9 +74,12 @@ class CompilerService:
         for name, value in defines.items():
             defineArg = name
             if value is not None:
-                defineArg += f"={value}"
-            
-            compileCommand.append(f"/D\"{defineArg}\"")
+                if type(value) is str:
+                    defineArg += f"=\"{value}\""
+                else:
+                    defineArg += f"={value}"
+
+            compileCommand.append(f"/D{defineArg}")
 
         # Append target type
         self.lastResultCode, targetType = self.config.GetBuildStepTargetType()
@@ -83,19 +89,19 @@ class CompilerService:
         if targetType == ReservedValues.Configuration.Build.Target.Type.LIBRARY:
             compileCommand.append("/LD")
 
+        # Append output paths
         self.lastResultCode, targetName = self.config.GetBuildStepTargetName()
         if not self.lastResultCode == ResultCode.SUCCESS:
             return ResultCode.ERR_GENERIC
 
-        # Append output paths
         # pathlib strips trailing slash, but is needed for cl. Adding it back with os.path.join().
-        targetPath = self.config.GetTargetOutputDir() / buildName
+        targetPath = self.config.GetTargetOutputDir(PathType.RELATIVE) / self.buildName
         targetPath = os.path.join(targetPath, targetName)
 
-        objDir = self.config.GetObjectOutputDir() / buildName
+        objDir = self.config.GetObjectOutputDir(PathType.RELATIVE) / self.buildName
         objDir = os.path.join(objDir, '')
 
-        debugSymbolsDir = self.config.GetDebugSymbolsOutputDir() / buildName
+        debugSymbolsDir = self.config.GetDebugSymbolsOutputDir(PathType.RELATIVE) / self.buildName
         debugSymbolsDir = os.path.join(debugSymbolsDir, '')
 
         compileCommand.append(f"/Fe:{targetPath}")
@@ -121,35 +127,22 @@ class CompilerService:
         if not self.lastResultCode == ResultCode.SUCCESS:
             return ResultCode.ERR_GENERIC
 
-        for lib in dynamicLibraries:
+        if not len(dynamicLibraries) == 0:
             compileCommand.append("/MD")
-            compileCommand.append(lib)
+            for lib in dynamicLibraries:
+                compileCommand.append(lib)
 
         self.lastResultCode, staticLibraries = self.config.GetBuildStepStaticSharedLibraries()
         if not self.lastResultCode == ResultCode.SUCCESS:
             return ResultCode.ERR_GENERIC
 
-        for lib in staticLibraries:
+        if not len(staticLibraries) == 0:
             compileCommand.append("/MT")
-            compileCommand.append(lib)
+            for lib in staticLibraries:
+                compileCommand.append(lib)
 
-        objModifiedTimes = {}
-        objFilePaths = {}
-        objFilesToRemove = []
-        
-        # Enumerate modification times of object files
-        with self.config.GetObjectOutputDir() as objFileRootPath:
-            if not objFileRootPath.exists():
-                self.output.SendWarning(f"Skipping object directory '{objFileRootPath}' because it could not be found")
-            else:
-                for objFile in os.listdir(objFileRootPath.resolve()):
-                    if not objFile.endswith("obj"):
-                        continue
-
-                    with Path(objFileRootPath / objFile) as objFilePath:
-                        objFileName = objFilePath.parts[-1]
-                        objModifiedTimes[objFileName] = objFilePath.lstat().st_mtime
-                        objFilePaths[objFileName] = objFilePath.resolve()
+        with self.config.GetObjectOutputDir(PathType.ABSOLUTE) / self.buildName as objFileRootPath:
+            self.__ClearDirTree(objFileRootPath)
 
         self.lastResultCode, sourceExtension = self.config.GetBuildStepSourceExtension()
         if not self.lastResultCode == ResultCode.SUCCESS:
@@ -159,49 +152,35 @@ class CompilerService:
         if not self.lastResultCode == ResultCode.SUCCESS:
             return ResultCode.ERR_GENERIC
 
-        # FIXME: Look out, currently no files can have the same name! (Even in different dir)
-        # TODO: Use glob wildcard if all source files in directory are being compiled?
-
         # Append source file to compile command if modified time is more recent than object modified time
         for dir in sourceDirectories:
             with Path(dir) as sourcePath:
-                if not sourcePath.exists():
+                if not sourcePath.exists() or not sourcePath.is_dir():
                     self.output.SendWarning(f"Skipping source directory '{sourcePath}' because it could not be found")
                     continue
 
-                for sourceFile in os.listdir(sourcePath.resolve()):
-                    if not sourceFile.endswith(sourceExtension):
+                for item in sourcePath.iterdir():
+                    if not item.is_file():
                         continue
 
-                    filePath = None
-                    with Path(sourcePath / sourceFile) as sourceFilePath:
-                        fileName = sourceFilePath.parts[-1]
-                        if fileName in objModifiedTimes:
-                            if objModifiedTimes[fileName] > sourceFilePath.lstat().st_mtime:
-                                filePath = objFilePaths[fileName]
-                            else:
-                                objFilesToRemove.append(objFilePaths[fileName])
-                                filePath = str(sourceFilePath)
-                        else:
-                            filePath = str(sourceFilePath)
+                    fileName = item.parts[-1]
+                    if not fileName.endswith(sourceExtension):
+                        continue
 
-                    compileCommand.append(filePath)
-
-        for f in objFilesToRemove:
-            os.remove(f)
-
-    ##### DEBUG
-        print(compileCommand)
-        return ResultCode.SUCCESS
-    ###~ DEBUG
+                    compileCommand.append(str(item))
 
         return self.__Execute(compileCommand)
 
-    def __Execute(self, cmd: str):
+    def __Execute(self, cmd: list[str]):
+        executableName = cmd[0]
+
+        self.output.SendInfoPrintOnly(f"Starting child process {executableName}")
+        self.output.SendInfoLogOnly(f"Starting child process {executableName} with arguments {cmd[1:]}")
         p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         for line in p.stdout:
             line = line.decode().strip()
             if not line == "":
+                line = f"({executableName}) {line}"
                 if self.errorIndicator in line:
                     self.output.SendError(line)
                 elif self.warningIndicator in line:
@@ -210,7 +189,7 @@ class CompilerService:
                     self.output.SendInfo(line)
 
         p.communicate()
-        msg = f"Compilation process exited with code {p.returncode}"
+        msg = f"Child process {executableName} exited with code {p.returncode}"
         if not p.returncode == 0:
             self.output.SendWarning(msg)
             return ResultCode.WRN_PROC_NONZERO_EXIT
@@ -219,9 +198,13 @@ class CompilerService:
             return ResultCode.SUCCESS
 
     def __ClearDirTree(self, root: str):
-        for p in Path(root).iterdir():
-            if not p.is_dir():
-                os.remove(p)
-            else:
-                self.__ClearDirTree(p)
-                os.rmdir(p)
+        with Path(root) as treeRoot:
+            if not treeRoot.exists():
+                return
+
+            for p in treeRoot.iterdir():
+                if not p.is_dir():
+                    os.remove(p)
+                else:
+                    self.__ClearDirTree(p)
+                    os.rmdir(p)

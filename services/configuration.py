@@ -10,6 +10,10 @@ from pathlib import Path
 
 from constants import Configuration, KeyNames, ReservedValues, ResultCode
 
+class PathType():
+    ABSOLUTE = 0
+    RELATIVE = 1
+
 class ConfigurationService:
     def __init__(self):
         self.configRoot = Path(os.getcwd()).resolve()
@@ -43,17 +47,33 @@ class ConfigurationService:
     def GetTargetPlatform(self):
         return self.rootData[KeyNames.Root.Platform.ROOT]
 
-    def GetTargetOutputDir(self):
-        return Path(self.projectRoot / self.rootData[KeyNames.Root.OutputDirectories.ROOT][KeyNames.Root.OutputDirectories.TARGET])
+    def GetTargetOutputDir(self, pathType: PathType):
+        relativePath = self.rootData[KeyNames.Root.OutputDirectories.ROOT][KeyNames.Root.OutputDirectories.TARGET]
 
-    def GetObjectOutputDir(self):
-        return Path(self.projectRoot / self.rootData[KeyNames.Root.OutputDirectories.ROOT][KeyNames.Root.OutputDirectories.OBJECT])
+        if pathType == PathType.RELATIVE:
+            return Path(relativePath)
+        return Path(self.projectRoot / relativePath)
 
-    def GetDebugSymbolsOutputDir(self):
-        return Path(self.projectRoot / self.rootData[KeyNames.Root.OutputDirectories.ROOT][KeyNames.Root.OutputDirectories.DEBUG_SYMBOLS])
+    def GetObjectOutputDir(self, pathType: PathType):
+        relativePath = self.rootData[KeyNames.Root.OutputDirectories.ROOT][KeyNames.Root.OutputDirectories.OBJECT]
 
-    def GetLogOutputDir(self):
-        return Path(self.projectRoot / self.rootData[KeyNames.Root.OutputDirectories.ROOT][KeyNames.Root.OutputDirectories.LOG])
+        if pathType == PathType.RELATIVE:
+            return Path(relativePath)
+        return Path(self.projectRoot / relativePath)
+
+    def GetDebugSymbolsOutputDir(self, pathType: PathType):
+        relativePath = self.rootData[KeyNames.Root.OutputDirectories.ROOT][KeyNames.Root.OutputDirectories.DEBUG_SYMBOLS]
+
+        if pathType == PathType.RELATIVE:
+            return Path(relativePath)
+        return Path(self.projectRoot / relativePath)
+
+    def GetLogOutputDir(self, useRelative = False):
+        relativePath = self.rootData[KeyNames.Root.OutputDirectories.ROOT][KeyNames.Root.OutputDirectories.LOG]
+
+        if useRelative:
+            return Path(relativePath)
+        return Path(self.projectRoot / relativePath)
 
     def GetCompilerOutputDirs(self):
         return [

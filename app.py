@@ -6,6 +6,7 @@ See LICENSE file in the project root for full license information.
 
 import os
 from pathlib import Path
+import sys
 from typing import Any, Callable
 
 from argsd import ArgHelper
@@ -40,6 +41,7 @@ class Application():
         os.chdir(self.config.GetProjectRoot())
         self.output = OutputService(self.config.GetLogPath())
         self.output.SendInfoPrintOnly(f"Logging to file '{self.config.GetLogPath()}'")
+        self.output.SendInfo(f"Running on Python {sys.version}")
         self.output.SendInfo(f"Project root directory detected as '{self.config.GetProjectRoot()}'")
 
         self.lastResultCode = self.ExecuteActions()
