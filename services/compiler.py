@@ -133,24 +133,6 @@ class CompilerService:
             compileCommand.append("/MT")
             compileCommand.append(lib)
 
-        objModifiedTimes = {}
-        objFilePaths = {}
-        objFilesToRemove = []
-        
-        # Enumerate modification times of object files
-        with self.config.GetObjectOutputDir() as objFileRootPath:
-            if not objFileRootPath.exists():
-                self.output.SendWarning(f"Skipping object directory '{objFileRootPath}' because it could not be found")
-            else:
-                for objFile in os.listdir(objFileRootPath.resolve()):
-                    if not objFile.endswith("obj"):
-                        continue
-
-                    with Path(objFileRootPath / objFile) as objFilePath:
-                        objFileName = objFilePath.parts[-1]
-                        objModifiedTimes[objFileName] = objFilePath.lstat().st_mtime
-                        objFilePaths[objFileName] = objFilePath.resolve()
-
         self.lastResultCode, sourceExtension = self.config.GetBuildStepSourceExtension()
         if not self.lastResultCode == ResultCode.SUCCESS:
             return ResultCode.ERR_GENERIC
@@ -158,37 +140,6 @@ class CompilerService:
         self.lastResultCode, sourceDirectories = self.config.GetBuildStepSourceDirectories()
         if not self.lastResultCode == ResultCode.SUCCESS:
             return ResultCode.ERR_GENERIC
-
-        # FIXME: Look out, currently no files can have the same name! (Even in different dir)
-        # TODO: Use glob wildcard if all source files in directory are being compiled?
-
-        # Append source file to compile command if modified time is more recent than object modified time
-        for dir in sourceDirectories:
-            with Path(dir) as sourcePath:
-                if not sourcePath.exists():
-                    self.output.SendWarning(f"Skipping source directory '{sourcePath}' because it could not be found")
-                    continue
-
-                for sourceFile in os.listdir(sourcePath.resolve()):
-                    if not sourceFile.endswith(sourceExtension):
-                        continue
-
-                    filePath = None
-                    with Path(sourcePath / sourceFile) as sourceFilePath:
-                        fileName = sourceFilePath.parts[-1]
-                        if fileName in objModifiedTimes:
-                            if objModifiedTimes[fileName] > sourceFilePath.lstat().st_mtime:
-                                filePath = objFilePaths[fileName]
-                            else:
-                                objFilesToRemove.append(objFilePaths[fileName])
-                                filePath = str(sourceFilePath)
-                        else:
-                            filePath = str(sourceFilePath)
-
-                    compileCommand.append(filePath)
-
-        for f in objFilesToRemove:
-            os.remove(f)
 
     ##### DEBUG
         print(compileCommand)
