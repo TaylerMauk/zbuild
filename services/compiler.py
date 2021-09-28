@@ -34,42 +34,44 @@ class CompilerService:
         os.makedirs(self.config.GetObjectOutputDir(PathType.ABSOLUTE) / self.buildName, exist_ok = True)
         os.makedirs(self.config.GetDebugSymbolsOutputDir(PathType.ABSOLUTE) / self.buildName, exist_ok = True)
 
-        # TODO: Add logic to handle multiple build steps
-        self.config.LoadNextBuildStep()
-
+        compileFunction = None
         if toolchain == "clang":
+            self.output.SendInfo("Active toolchain is clang")
             self.errorIndicator = None
             self.warningIndicator = None
-            resultCode = self.__CompileWithClang()
+            compileFunction = self.__CompileWithClang
         elif toolchain == "gcc":
+            self.output.SendInfo("Active toolchain is gcc")
             self.errorIndicator = None
             self.warningIndicator = None
-            resultCode = self.__CompileWithGCC()
+            compileFunction = self.__CompileWithGCC
         elif toolchain == "msvc":
+            self.output.SendInfo("Active toolchain is msvc")
             self.errorIndicator = "error"
             self.warningIndicator = "warning"
-            resultCode = self.__CompileWithMSVC()
+            compileFunction = self.__CompileWithMSVC
 
-        return resultCode
+        while self.config.LoadNextBuildStep() == ResultCode.SUCCESS and self.lastResultCode == ResultCode.SUCCESS:
+            self.output.SendInfo(f"Starting build step '{self.config.GetBuildStepName()}'")
+            self.lastResultCode = compileFunction()
+
+        return self.lastResultCode
 
     def __CompileWithClang(self):
-        self.output.SendInfo("Active toolchain is clang")
         compileCommand = ["clang"]
         return ResultCode.ERR_NOT_IMPLEMENTED
 
     def __CompileWithGCC(self):
-        self.output.SendInfo("Active toolchain is gcc")
         compileCommand = ["gcc"]
         return ResultCode.ERR_NOT_IMPLEMENTED
 
     def __CompileWithMSVC(self):
-        self.output.SendInfo("Active toolchain is msvc")
         compileCommand = ["cl", "/nologo"]
 
         # Append defines
         self.lastResultCode, defines = self.config.GetBuildStepDefines()
         if not self.lastResultCode == ResultCode.SUCCESS:
-            return ResultCode.ERR_GENERIC
+            return self.lastResultCode
 
         for name, value in defines.items():
             defineArg = name
@@ -84,7 +86,7 @@ class CompilerService:
         # Append target type
         self.lastResultCode, targetType = self.config.GetBuildStepTargetType()
         if not self.lastResultCode == ResultCode.SUCCESS:
-            return ResultCode.ERR_GENERIC
+            return self.lastResultCode
 
         if targetType == ReservedValues.Configuration.Build.Target.Type.LIBRARY:
             compileCommand.append("/LD")
@@ -92,7 +94,7 @@ class CompilerService:
         # Append output paths
         self.lastResultCode, targetName = self.config.GetBuildStepTargetName()
         if not self.lastResultCode == ResultCode.SUCCESS:
-            return ResultCode.ERR_GENERIC
+            return self.lastResultCode
 
         # pathlib strips trailing slash, but is needed for cl. Adding it back with os.path.join().
         targetPath = self.config.GetTargetOutputDir(PathType.RELATIVE) / self.buildName
@@ -110,33 +112,34 @@ class CompilerService:
 
         # Append include directories
         self.lastResultCode, includeDirectories = self.config.GetBuildStepIncludeDirectories()
-        if not self.lastResultCode == ResultCode.SUCCESS:
-            return ResultCode.ERR_GENERIC
+        if not self.lastResultCode in (ResultCode.SUCCESS, ResultCode.WRN_NO_VALUE):
+            return self.lastResultCode
 
-        for dir in includeDirectories:
-            with Path(dir) as includePath:
-                if not includePath.exists():
-                    self.output.SendWarning(f"Skipping include directory '{includePath}' because it could not be found")
-                    continue
+        if includeDirectories is not None:
+            for dir in includeDirectories:
+                with Path(dir) as includePath:
+                    if not includePath.exists():
+                        self.output.SendWarning(f"Skipping include directory '{includePath}' because it could not be found")
+                        continue
 
-                compileCommand.append("/I")
-                compileCommand.append(str(includePath))
+                    compileCommand.append("/I")
+                    compileCommand.append(str(includePath))
 
         # Append shared libraries
         self.lastResultCode, dynamicLibraries = self.config.GetBuildStepDynamicSharedLibraries()
-        if not self.lastResultCode == ResultCode.SUCCESS:
-            return ResultCode.ERR_GENERIC
+        if not self.lastResultCode in (ResultCode.SUCCESS, ResultCode.WRN_NO_VALUE):
+            return self.lastResultCode
 
-        if not len(dynamicLibraries) == 0:
+        if dynamicLibraries is not None and len(dynamicLibraries) > 0:
             compileCommand.append("/MD")
             for lib in dynamicLibraries:
                 compileCommand.append(lib)
 
         self.lastResultCode, staticLibraries = self.config.GetBuildStepStaticSharedLibraries()
-        if not self.lastResultCode == ResultCode.SUCCESS:
-            return ResultCode.ERR_GENERIC
+        if not self.lastResultCode in (ResultCode.SUCCESS, ResultCode.WRN_NO_VALUE):
+            return self.lastResultCode
 
-        if not len(staticLibraries) == 0:
+        if staticLibraries is not None and len(staticLibraries) > 0:
             compileCommand.append("/MT")
             for lib in staticLibraries:
                 compileCommand.append(lib)
@@ -146,11 +149,11 @@ class CompilerService:
 
         self.lastResultCode, sourceExtension = self.config.GetBuildStepSourceExtension()
         if not self.lastResultCode == ResultCode.SUCCESS:
-            return ResultCode.ERR_GENERIC
+            return self.lastResultCode
 
         self.lastResultCode, sourceDirectories = self.config.GetBuildStepSourceDirectories()
         if not self.lastResultCode == ResultCode.SUCCESS:
-            return ResultCode.ERR_GENERIC
+            return self.lastResultCode
 
         # Append source file to compile command if modified time is more recent than object modified time
         for dir in sourceDirectories:

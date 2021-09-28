@@ -12,7 +12,7 @@ from typing import Any, Callable
 from argsd import ArgHelper
 from constants import ResultCode
 from services.compiler import CompilerService
-from services.configuration import ConfigurationService
+from services.configuration import ConfigurationService, PathType
 from services.output import OutputService
 
 class Application():
@@ -39,8 +39,9 @@ class Application():
             self.Quit(self.lastResultCode)
         
         os.chdir(self.config.GetProjectRoot())
-        self.output = OutputService(self.config.GetLogPath())
-        self.output.SendInfoPrintOnly(f"Logging to file '{self.config.GetLogPath()}'")
+        self.output = OutputService(self.config.GetLogPath(PathType.ABSOLUTE))
+        self.output.SendInfoPrintOnly(f"Logging to file '{self.config.GetLogPath(PathType.ABSOLUTE)}'")
+        self.output.SendInfoLogOnly(f"New instance started")
         self.output.SendInfo(f"Running on Python {sys.version}")
         self.output.SendInfo(f"Project root directory detected as '{self.config.GetProjectRoot()}'")
 

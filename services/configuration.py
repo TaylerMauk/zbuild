@@ -68,22 +68,22 @@ class ConfigurationService:
             return Path(relativePath)
         return Path(self.projectRoot / relativePath)
 
-    def GetLogOutputDir(self,  pathType: PathType):
+    def GetLogOutputDir(self, pathType: PathType):
         relativePath = self.rootData[KeyNames.Root.OutputDirectories.ROOT][KeyNames.Root.OutputDirectories.LOG]
 
         if pathType == PathType.RELATIVE:
             return Path(relativePath)
         return Path(self.projectRoot / relativePath)
 
-    def GetCompilerOutputDirs(self):
+    def GetCompilerOutputDirs(self, pathType: PathType):
         return [
-            self.GetTargetOutputDir(),
-            self.GetDebugSymbolsOutputDir(),
-            self.GetObjectOutputDir()
+            self.GetTargetOutputDir(pathType),
+            self.GetDebugSymbolsOutputDir(pathType),
+            self.GetObjectOutputDir(pathType)
         ]
     
-    def GetLogPath(self):
-        return self.GetLogOutputDir() / f"{Configuration.App.NAME}.log"
+    def GetLogPath(self, pathType: PathType):
+        return self.GetLogOutputDir(pathType) / f"{Configuration.App.NAME}.log"
         
     def GetToolchain(self):
         return str(self.rootData[KeyNames.Root.Toolchain.ROOT])
@@ -148,7 +148,7 @@ class ConfigurationService:
                 return ResultCode.ERR_CONFIG_INVALID
 
             self.buildName = buildName
-            self.buildStepNumber = 0
+            self.buildStepNumber = -1
             self.buildStepNames = list(self.buildData[KeyNames.Build.Steps.ROOT].keys())
             self.buildSharedResources = self.buildData[KeyNames.Build.SharedRecources.ROOT]
             return ResultCode.SUCCESS
@@ -164,13 +164,16 @@ class ConfigurationService:
 ################################################################################
 
     def LoadNextBuildStep(self):
-        if self.buildStepNumber == len(self.buildStepNames):
+        if self.buildStepNumber == len(self.buildStepNames) - 1:
             return ResultCode.WRN_NO_VALUE
 
+        self.buildStepNumber += 1
         self.buildStepName = self.buildStepNames[self.buildStepNumber]
         self.buildStepData = self.buildData[KeyNames.Build.Steps.ROOT][self.buildStepName]
-        self.buildStepNumber += 1
         return ResultCode.SUCCESS
+
+    def GetBuildStepName(self):
+        return self.buildStepName
 
     def GetBuildStepDefines(self):
         return self.__GetBuildStepValue(KeyNames.Build.Steps.Detail.DEFINES)
