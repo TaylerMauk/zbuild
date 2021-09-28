@@ -22,9 +22,6 @@ class CompilerService:
         self.lastResultCode = ResultCode.SUCCESS
 
     def Compile(self):
-        resultCode = ResultCode.SUCCESS
-        toolchain = self.config.GetToolchain()
-
         dir = self.config.GetTargetOutputDir(PathType.ABSOLUTE) / self.buildName
         if dir.exists():
             self.__ClearDirTree(dir)
@@ -33,20 +30,20 @@ class CompilerService:
 
         os.makedirs(self.config.GetObjectOutputDir(PathType.ABSOLUTE) / self.buildName, exist_ok = True)
         os.makedirs(self.config.GetDebugSymbolsOutputDir(PathType.ABSOLUTE) / self.buildName, exist_ok = True)
-
+        
+        toolchain = self.config.GetToolchain()
+        self.output.SendInfo(f"Active toolchain is {toolchain}")
         compileFunction = None
-        if toolchain == "clang":
-            self.output.SendInfo("Active toolchain is clang")
+
+        if toolchain == ReservedValues.Configuration.Root.Toolchain.CLANG:
             self.errorIndicator = None
             self.warningIndicator = None
             compileFunction = self.__CompileWithClang
-        elif toolchain == "gcc":
-            self.output.SendInfo("Active toolchain is gcc")
+        elif toolchain == ReservedValues.Configuration.Root.Toolchain.GCC:
             self.errorIndicator = None
             self.warningIndicator = None
             compileFunction = self.__CompileWithGCC
-        elif toolchain == "msvc":
-            self.output.SendInfo("Active toolchain is msvc")
+        elif toolchain == ReservedValues.Configuration.Root.Toolchain.MSVC:
             self.errorIndicator = "error"
             self.warningIndicator = "warning"
             compileFunction = self.__CompileWithMSVC

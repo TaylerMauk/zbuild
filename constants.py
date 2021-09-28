@@ -89,6 +89,12 @@ class ReservedValues():
                     LIBRARY    = "library"
                     STANDALONE = "standalone"
 
+        class Root():
+            class Toolchain():
+                CLANG = "clang"
+                GCC   = "gcc"
+                MSVC  = "msvc"
+
 # Result codes returned from operations
 class ResultCode():
     SUCCESS = 0x0

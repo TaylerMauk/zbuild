@@ -88,6 +88,13 @@ class ConfigurationService:
     def GetToolchain(self):
         return str(self.rootData[KeyNames.Root.Toolchain.ROOT])
 
+    def GetKnownToolchains(self):
+        return [
+            ReservedValues.Configuration.Root.Toolchain.CLANG,
+            ReservedValues.Configuration.Root.Toolchain.GCC,
+            ReservedValues.Configuration.Root.Toolchain.MSVC
+        ]
+
     def CheckConfigDir(self):
         with self.GetConfigDir() as configDirPath:
             if configDirPath.exists():
@@ -110,6 +117,10 @@ class ConfigurationService:
     def CheckRootConfig(self):
         if not self.rootData.keys() & { KeyNames.Root.OutputDirectories.ROOT, KeyNames.Root.Platform.ROOT, KeyNames.Root.Toolchain.ROOT }:
             return ResultCode.ERR_CONFIG_INVALID
+
+        if not self.GetToolchain() in self.GetKnownToolchains():
+            return ResultCode.ERR_CONFIG_INVALID
+
         return ResultCode.SUCCESS
 
     def FindProjectRoot(self):
