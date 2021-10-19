@@ -51,6 +51,7 @@ class KeyNames():
                 INCLUDE_DIRECTORIES    = "includeDirectories"
                 SOURCE_DIRECTORIES     = "sourceDirectories"
                 DEFINES                = "defines"
+                ADDITIONAL_ARGUMENTS   = "additionalArguments"
 
                 class SharedLibraries():
                     ROOT    = "sharedLibraries"

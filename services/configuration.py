@@ -207,6 +207,9 @@ class ConfigurationService:
     def GetBuildStepTargetType(self):
         return self.__GetBuildStepValue(KeyNames.Build.Steps.Detail.TARGET_TYPE)
 
+    def GetBuildStepAdditionalArguments(self):
+        return self.__GetBuildStepAdditionalArgs(KeyNames.Build.Steps.Detail.ADDITIONAL_ARGUMENTS)
+
     def GetBuildStepDynamicSharedLibraries(self):
         return self.__GetBuildStepSharedLibraries(KeyNames.Build.Steps.Detail.SharedLibraries.DYNAMIC)
 
@@ -254,3 +257,13 @@ class ConfigurationService:
                     sharedLibs.append(lib)
 
         return (ResultCode.SUCCESS, sharedLibs)
+        
+    def __GetBuildStepAdditionalArgs(self, libType: str):
+        resultCode, argData = self.__GetBuildStepValue(KeyNames.Build.Steps.Detail.ADDITIONAL_ARGUMENTS)
+        if not resultCode == ResultCode.SUCCESS:
+            return (resultCode, None)
+
+        toolchain = self.GetToolchain()
+        if not toolchain in argData:
+            return (ResultCode.WRN_NO_VALUE, None)
+        return (ResultCode.SUCCESS, argData[toolchain])

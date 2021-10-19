@@ -41,7 +41,7 @@ class Application():
         os.chdir(self.config.GetProjectRoot())
         self.output = OutputService(self.config.GetLogPath(PathType.ABSOLUTE))
         self.output.SendInfoPrintOnly(f"Logging to file '{self.config.GetLogPath(PathType.ABSOLUTE)}'")
-        self.output.SendInfoLogOnly(f"New instance started")
+        self.output.SendInfoLogOnly(f"New zbuild instance started")
         self.output.SendInfo(f"Running on Python {sys.version}")
         self.output.SendInfo(f"Project root directory detected as '{self.config.GetProjectRoot()}'")
 

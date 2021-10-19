@@ -169,13 +169,22 @@ class CompilerService:
 
                     compileCommand.append(str(item))
 
+        # Append additional arguments
+        self.lastResultCode, additionalArgs = self.config.GetBuildStepAdditionalArguments()
+        if not self.lastResultCode in (ResultCode.SUCCESS, ResultCode.WRN_NO_VALUE):
+            return self.lastResultCode
+
+        if additionalArgs is not None:
+            for arg in additionalArgs:
+                compileCommand.append(arg)
+
         return self.__Execute(compileCommand)
 
     def __Execute(self, cmd: list[str]):
         executableName = cmd[0]
 
         self.output.SendInfoPrintOnly(f"Starting child process {executableName}")
-        self.output.SendInfoLogOnly(f"Starting child process {executableName} with arguments {cmd[1:]}")
+        self.output.SendInfoLogOnly(f"Starting child process '{executableName}' with arguments {' '.join(cmd[1:])}")
         p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         for line in p.stdout:
             line = line.decode().strip()
